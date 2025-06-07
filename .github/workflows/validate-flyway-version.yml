@@ -1,0 +1,94 @@
+name: Validate and Bump Flyway Version
+
+on:
+  push:
+    paths:
+      - 'email-to-trello/src/main/resources/database/**'
+
+jobs:
+  flyway-version-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required for git push
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Check and Update Flyway File Versions
+        run: |
+          import os
+          import re
+          import subprocess
+
+          db_path = 'email-to-trello/src/main/resources/database'
+          mig_path = os.path.join(db_path, 'migration_flyway')
+          rev_path = os.path.join(db_path, 'revert_flyway')
+
+          def extract_version(filename):
+              match = re.match(r'(V\d+\.\d+)_.*\.sql', filename)
+              return match.group(1) if match else None
+
+          def get_existing_versions(folder):
+              versions = set()
+              for f in os.listdir(folder):
+                  v = extract_version(f)
+                  if v:
+                      versions.add(v)
+              return versions
+
+          def bump_version(version):
+              major, minor = map(int, version[1:].split('.'))
+              return f"V{major}.{minor + 1}"
+
+          migration_files = os.listdir(mig_path)
+          revert_files = os.listdir(rev_path)
+          existing_versions = get_existing_versions(mig_path) | get_existing_versions(rev_path)
+
+          changed_files = subprocess.check_output(
+              ['git', 'diff', '--name-only', 'HEAD~1'],
+              text=True
+          ).splitlines()
+
+          changed_mig = [f for f in changed_files if 'migration_flyway' in f]
+          changed_rev = [f for f in changed_files if 'revert_flyway' in f]
+
+          for filepath in changed_mig:
+              filename = os.path.basename(filepath)
+              version = extract_version(filename)
+              if not version:
+                  continue
+
+              new_version = version
+              while new_version in existing_versions:
+                  new_version = bump_version(new_version)
+
+              if new_version != version:
+                  new_filename = filename.replace(version, new_version)
+                  new_filepath = os.path.join(mig_path, new_filename)
+                  old_filepath = os.path.join(mig_path, filename)
+                  os.rename(old_filepath, new_filepath)
+                  print(f"Renamed migration: {filename} → {new_filename}")
+
+                  # Also update revert file
+                  expected_revert = filename.replace('migration', 'revert')
+                  old_revert_path = os.path.join(rev_path, expected_revert)
+                  if os.path.exists(old_revert_path):
+                      new_revert_filename = expected_revert.replace(version, new_version)
+                      new_revert_path = os.path.join(rev_path, new_revert_filename)
+                      os.rename(old_revert_path, new_revert_path)
+                      print(f"Renamed revert: {expected_revert} → {new_revert_filename}")
+
+                  # Git commit
+                  subprocess.run(["git", "config", "user.name", "github-actions"])
+                  subprocess.run(["git", "config", "user.email", "github-actions@github.com"])
+                  subprocess.run(["git", "add", "."], check=True)
+                  subprocess.run(["git", "commit", "-m", f"🔁 Auto-bumped Flyway version: {version} → {new_version}"])
+                  subprocess.run(["git", "push"], check=True)
+
+        shell: python
