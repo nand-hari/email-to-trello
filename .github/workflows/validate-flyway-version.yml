@@ -2,10 +2,10 @@ name: Validate and Bump Flyway Version
 on:
   push:
     paths:
-      - 'email-to-trello/src/main/resources/database/**'
+      - 'src/main/resources/database/**'
   pull_request:
     paths:
-      - 'email-to-trello/src/main/resources/database/**'
+      - 'src/main/resources/database/**'
 jobs:
   flyway-version-check:
     runs-on: ubuntu-latest
