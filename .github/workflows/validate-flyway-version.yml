@@ -27,7 +27,7 @@ jobs:
           import re
           import subprocess
 
-          db_path = 'email-to-trello/src/main/resources/database'
+          db_path = 'src/main/resources/database'
           mig_path = os.path.join(db_path, 'migration_flyway')
           rev_path = os.path.join(db_path, 'revert_flyway')
 
