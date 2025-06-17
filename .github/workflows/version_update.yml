@@ -1,0 +1,77 @@
+name: Auto-bump Flyway Version on PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Set up Git config
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+      - name: Auto-bump Flyway versions
+        run: |
+          DB_PATH="src/main/resources/database/migration_flyway"
+          cd "$DB_PATH"
+
+          # Collect all existing versions
+          existing_versions=$(ls V*.sql 2>/dev/null | sed -n 's/^V\([0-9]\+\.[0-9]\+\)__.*\.sql$/\1/p' | sort -V)
+          latest_version=$(echo "$existing_versions" | tail -n 1)
+
+          echo "Existing versions:"
+          echo "$existing_versions"
+
+          # Get changed files in the PR
+          cd ../../../../..
+          git fetch origin ${{ github.event.pull_request.base.ref }} --depth=1
+          changed_files=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }})
+
+          for file in $changed_files; do
+            if [[ "$file" == src/main/resources/database/migration_flyway/V*.sql ]]; then
+              base=$(basename "$file")
+              current_version=$(echo "$base" | sed -n 's/^V\([0-9]\+\.[0-9]\+\)__.*\.sql$/\1/p')
+
+              if [[ -z "$current_version" ]]; then
+                echo "❌ Could not parse version from $base"
+                continue
+              fi
+
+              # Check if version already exists
+              if echo "$existing_versions" | grep -qx "$current_version"; then
+                major=$(echo $current_version | cut -d. -f1)
+                minor=$(echo $current_version | cut -d. -f2)
+
+                # Increment minor until unique
+                while echo "$existing_versions" | grep -qx "V$major.$minor"; do
+                  minor=$((minor + 1))
+                done
+
+                new_version="V$major.$minor"
+                new_file=$(echo "$base" | sed "s/^V$current_version/V$major.$minor/")
+
+                echo "Renaming $file → $(dirname $file)/$new_file"
+                git mv "$file" "$(dirname $file)/$new_file"
+                existing_versions=$(echo -e "$existing_versions\n$major.$minor" | sort -V)
+              fi
+            fi
+          done
+
+          if git diff --cached --quiet; then
+            echo "✅ No file renames needed."
+          else
+            git commit -m "🔁 Auto-bumped Flyway version(s)"
+            git push
+          fi
