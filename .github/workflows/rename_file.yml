@@ -1,0 +1,42 @@
+name: Rename Migration File in PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  rename-file:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Allows pushing changes to the PR
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0  # Full history
+
+      - name: Set up Git config
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+      - name: Rename migration file to vv.sql
+        run: |
+          TARGET_DIR="src/main/resources/database/migration_flyway"
+          cd "$TARGET_DIR"
+          
+          # Find first SQL file
+          FILE=$(find . -maxdepth 1 -type f -name "*.sql" | head -n 1)
+
+          if [ -n "$FILE" ] && [ "$FILE" != "./vv.sql" ]; then
+            echo "Renaming $FILE to vv.sql"
+            git mv "$FILE" "vv.sql"
+            cd -
+            git add .
+            git commit -m "🔁 Auto-renamed migration file to vv.sql"
+            git push
+          else
+            echo "No file to rename or already named vv.sql"
+          fi
