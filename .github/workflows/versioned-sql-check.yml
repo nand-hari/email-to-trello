@@ -20,7 +20,7 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Run SQL version check script
-        run: bash .github/scripts/check_sql_versions.sh
+        run: bash .github/workflows/scripts/check_sql_versions.sh
 
       - name: Push changes if any
         run: |
