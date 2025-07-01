@@ -1,33 +1,36 @@
-#!/bin/bash
-set -e
+name: Check and Rename SQL Migration Versions
 
-MIGRATION_DIR="src/main/resources/database/migration_flyway"
-REVERT_DIR="src/main/resources/database/revert_flyway"
-TARGET_DIRS=("$MIGRATION_DIR" "$REVERT_DIR")
+on:
+  pull_request:
+    paths:
+      - 'src/main/resources/database/migration_flyway/**'
+      - 'src/main/resources/database/revert_flyway/**'
 
-echo "🔍 Comparing origin/main...HEAD"
-git fetch origin main
+jobs:
+  check-sql-versions:
+    runs-on: ubuntu-latest
 
-# Find changed SQL files in both directories
-CHANGED_FILES=$(git diff --name-only origin/main...HEAD -- "${TARGET_DIRS[@]}" | grep -E 'V[0-9]+\.[0-9]+_migration.*\.sql$' || true)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-if [[ -z "$CHANGED_FILES" ]]; then
-  echo "✅ No SQL migration files changed."
-  exit 0
-fi
+      - name: Set up Git user
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
 
-echo "📝 Changed files:"
-echo "$CHANGED_FILES"
+      - name: Run SQL version checker script
+        run: bash .github/workflows/scripts/check_sql_versions.sh
 
-# Group all files by version (across all dirs)
-declare -A VERSION_GROUPS
-
-for file in $CHANGED_FILES; do
-  filename=$(basename "$file")
-  version=$(echo "$filename" | grep -oE '^V[0-9]+\.[0-9]+')
-
-  echo "➡️  Processing file: $filename (version: $version)"
-  VERSION_GROUPS["$version"]="${VERSION_GROUPS["$version"]} $file"
-done
-
-# Process eac
+      - name: Push changes if any
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "🔄 Changes detected, pushing to PR branch ${{ github.head_ref }}"
+            git push origin HEAD:${{ github.head_ref }}
+          else
+            echo "✅ No changes to push"
+          fi
