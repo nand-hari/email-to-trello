@@ -1,41 +1,34 @@
 #!/bin/bash
-
 set -e
 
 TARGET_DIR="src/main/resources/database"
 
-# List newly added SQL files
-FILES=$(git diff --name-status origin/main | awk '/^A/ {print $2}' | grep "^$TARGET_DIR/.*\.sql$")
+# Get list of newly added or modified SQL files in the PR
+CHANGED_FILES=$(git diff --name-only origin/main...HEAD -- "$TARGET_DIR" | grep -E '^'"$TARGET_DIR"'/V[0-9]+\.[0-9]+_migration.*\.sql$' || true)
 
-for FILE in $FILES; do
-  FILENAME=$(basename "$FILE")
-  DIRNAME=$(dirname "$FILE")
+for file in $CHANGED_FILES; do
+    filename=$(basename "$file")
+    dir=$(dirname "$file")
 
-  # Extract version (e.g., V1.1) and name (e.g., migration.sql)
-  VERSION=$(echo "$FILENAME" | sed -n 's/^\(V[0-9]\+\.[0-9]\+\)_\(.*\)$/\1/p')
-  BASE_NAME=$(echo "$FILENAME" | sed -n 's/^V[0-9]\+\.[0-9]\+_\(.*\)$/\1/p')
+    version=$(echo "$filename" | grep -oE '^V[0-9]+\.[0-9]+')
+    suffix=$(echo "$filename" | cut -d'_' -f2-)
 
-  # If not matching expected format, skip
-  [[ -z "$VERSION" || -z "$BASE_NAME" ]] && continue
+    # Check if any file with same version exists (excluding current file)
+    existing_files=$(find "$dir" -type f -name "${version}_migration*.sql" ! -path "$file")
 
-  MAJOR=$(echo "$VERSION" | cut -d. -f1 | sed 's/V//')
-  MINOR=$(echo "$VERSION" | cut -d. -f2)
+    if [ -n "$existing_files" ]; then
+        echo "Conflict found for version $version in file $filename"
+        
+        # Extract major.minor, increment minor version
+        major=$(echo $version | cut -d'.' -f1 | tr -d 'V')
+        minor=$(echo $version | cut -d'.' -f2)
+        new_minor=$((minor + 1))
+        new_version="V${major}.${new_minor}"
 
-  # Find the highest minor version with same major
-  MAX_VERSION=$(find "$DIRNAME" -name "V${MAJOR}.*_*.sql" \
-    | sed -n "s/^.*\/V${MAJOR}\.\([0-9]\+\)_.*$/\1/p" | sort -n | tail -1)
+        new_filename="${new_version}_${suffix}"
+        new_path="${dir}/${new_filename}"
 
-  [[ -z "$MAX_VERSION" ]] && MAX_VERSION=$MINOR
-
-  if find "$DIRNAME" -name "V${VERSION}_*.sql" | grep -q .; then
-    NEW_MINOR=$((MAX_VERSION + 1))
-    NEW_VERSION="V${MAJOR}.${NEW_MINOR}"
-    NEW_FILENAME="${NEW_VERSION}_${BASE_NAME}"
-    NEW_PATH="${DIRNAME}/${NEW_FILENAME}"
-
-    echo "Conflict found for $FILENAME, renaming to $NEW_FILENAME"
-    mv "$FILE" "$NEW_PATH"
-    git add "$NEW_PATH"
-    git rm "$FILE"
-  fi
+        echo "Renaming $file -> $new_path"
+        git mv "$file" "$new_path"
+    fi
 done
