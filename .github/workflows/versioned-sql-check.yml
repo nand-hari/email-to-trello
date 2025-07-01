@@ -1,32 +1,33 @@
-name: Check & Rename SQL Version
+name: Check and Update SQL Version
 
 on:
   pull_request:
-    paths:
-      - 'src/main/resources/database/*.sql'
+    types: [opened, synchronize]
 
 jobs:
-  check-version:
+  check_sql_version:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout PR branch
+      - name: Checkout code
         uses: actions/checkout@v3
         with:
-          ref: ${{ github.head_ref }}
+          fetch-depth: 0
 
       - name: Set up Git
         run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Run version checker script
+      - name: Run SQL version check script
         run: bash .github/scripts/check_sql_versions.sh
 
-      - name: Commit & push changes if needed
+      - name: Push changes if any
         run: |
-          if [[ -n $(git status --porcelain) ]]; then
-            git add src/main/resources/database
-            git commit -m "fix: renamed conflicting SQL version files"
-            git push
+          if git diff --quiet; then
+            echo "No changes to commit"
+          else
+            git add src/main/resources/database/
+            git commit -m "chore: updated SQL version filenames"
+            git push origin HEAD:${{ github.head_ref }}
           fi
