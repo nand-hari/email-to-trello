@@ -14,7 +14,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # Important to fetch full history for git diff
 
       - name: Set up Git user
         run: |
@@ -29,8 +29,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [[ -n "$(git status --porcelain)" ]]; then
-            echo "🔄 Changes detected, pushing to PR branch ${{ github.head_ref }}"
+            echo "📤 Pushing changes to PR branch ${{ github.head_ref }}"
             git push origin HEAD:${{ github.head_ref }}
           else
-            echo "✅ No changes to push"
+            echo "No changes to push"
           fi
