@@ -2,19 +2,22 @@ name: Check and Rename SQL Migration Versions
 
 on:
   pull_request:
+    branches: [main]
     paths:
       - 'src/main/resources/database/migration_flyway/**'
       - 'src/main/resources/database/revert_flyway/**'
+  workflow_dispatch:
 
 jobs:
   check-sql-versions:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout PR branch
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Important to fetch full history for git diff
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0  # Ensure full git history for diff and push
 
       - name: Set up Git user
         run: |
@@ -32,5 +35,5 @@ jobs:
             echo "📤 Pushing changes to PR branch ${{ github.head_ref }}"
             git push origin HEAD:${{ github.head_ref }}
           else
-            echo "No changes to push"
+            echo "✅ No changes to push"
           fi
