@@ -11,25 +11,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: ⬇️ Checkout PR branch
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # Important: fetch full history to compare with main
 
-      - name: Set up Git
+      - name: 🧑‍💻 Set up Git config
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-      - name: Run SQL version checker
+      - name: 🔍 Run SQL version checker script
         run: bash .github/workflows/scripts/check_sql_versions.sh
 
-      - name: Push changes to PR
+      - name: 🚀 Push changes to PR branch if needed
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [[ -n "$(git status --porcelain)" ]]; then
-            echo "📤 Pushing changes to PR branch ${{ github.head_ref }}"
+          git fetch origin ${{ github.head_ref }}
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/${{ github.head_ref }})" ]]; then
+            echo "📤 Pushing renamed migration files to branch: ${{ github.head_ref }}"
             git push origin HEAD:${{ github.head_ref }}
           else
             echo "✅ No changes to push"
