@@ -5,20 +5,22 @@ MIGRATION_DIR="src/main/resources/database/migration_flyway"
 REVERT_DIR="src/main/resources/database/revert_flyway"
 TARGET_DIRS=("$MIGRATION_DIR" "$REVERT_DIR")
 
-git fetch origin main
+BASE_BRANCH="${BASE_BRANCH:-main}"  # Default to main if not set
 
-echo "🔍 Comparing origin/main...HEAD"
-CHANGED_FILES=$(git diff --name-only origin/main...HEAD -- "${TARGET_DIRS[@]}" | grep -E 'V[0-9]+\.[0-9]+_migration_.*\.sql$' || true)
+echo "🔍 Comparing origin/$BASE_BRANCH...HEAD"
+git fetch origin "$BASE_BRANCH"
+
+# Detect changed files compared to the PR base branch
+CHANGED_FILES=$(git diff --name-only "origin/$BASE_BRANCH...HEAD" -- "${TARGET_DIRS[@]}" | grep -E 'V[0-9]+\.[0-9]+_migration_.*\.sql$' || true)
 
 if [[ -z "$CHANGED_FILES" ]]; then
   echo "✅ No SQL migration files changed."
   exit 0
 fi
 
-echo "📝 Changed files:"
-echo "$CHANGED_FILES"
+# (Remaining logic unchanged from previous corrected script)
 
-# Build an associative array by suffix
+# Build associative array by suffix
 declare -A SUFFIX_TO_FILES
 
 for file in $CHANGED_FILES; do
@@ -30,12 +32,12 @@ for file in $CHANGED_FILES; do
   SUFFIX_TO_FILES["$key"]="${SUFFIX_TO_FILES[$key]} $file"
 done
 
-# Get the highest version from main for versioning
+# Get latest version number from base branch
 get_latest_version() {
-  find src/main/resources/database/migration_flyway -name 'V*_migration_*.sql' |
-    grep -oE 'V[0-9]+\.[0-9]+' |
-    sort -V |
-    tail -n 1
+  git ls-tree -r "origin/$BASE_BRANCH" --name-only | \
+    grep '^src/main/resources/database/migration_flyway/V[0-9]\+\.[0-9]\+_migration_.*\.sql$' | \
+    grep -oE 'V[0-9]+\.[0-9]+' | \
+    sort -V | tail -n 1
 }
 
 LATEST_VERSION=$(get_latest_version)
@@ -43,7 +45,7 @@ MAJOR=$(echo "$LATEST_VERSION" | cut -c2- | cut -d. -f1)
 MINOR=$(echo "$LATEST_VERSION" | cut -c2- | cut -d. -f2)
 NEXT_MINOR=$((MINOR + 1))
 
-# Rename per suffix (ensuring migration + revert get same version)
+# Rename per suffix
 for suffix in "${!SUFFIX_TO_FILES[@]}"; do
   NEW_VERSION="V${MAJOR}.${NEXT_MINOR}"
   echo "🔄 Renaming files with suffix $suffix to version $NEW_VERSION"
