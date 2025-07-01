@@ -8,7 +8,7 @@ TARGET_DIRS=("$MIGRATION_DIR" "$REVERT_DIR")
 echo "🔍 Comparing origin/main...HEAD"
 git fetch origin main
 
-# Find changed SQL files in both directories
+# Find changed SQL files
 CHANGED_FILES=$(git diff --name-only origin/main...HEAD -- "${TARGET_DIRS[@]}" | grep -E 'V[0-9]+\.[0-9]+_migration.*\.sql$' || true)
 
 if [[ -z "$CHANGED_FILES" ]]; then
@@ -19,60 +19,41 @@ fi
 echo "📝 Changed files:"
 echo "$CHANGED_FILES"
 
-# Group all files by version (across all dirs)
-declare -A VERSION_GROUPS
+# Track current max version in the repo
+ALL_EXISTING=$(find "${TARGET_DIRS[@]}" -type f -name 'V*_migration*.sql' | grep -oE 'V[0-9]+\.[0-9]+' | sort -u)
+LAST_VERSION=$(echo "$ALL_EXISTING" | sort -V | tail -n1)
+major=$(echo "$LAST_VERSION" | cut -c2- | cut -d. -f1)
+minor=$(echo "$LAST_VERSION" | cut -c2- | cut -d. -f2)
+next_minor=$((minor + 1))
+
+# Process and rename each unique file pair
+declare -A seen_base
 
 for file in $CHANGED_FILES; do
   filename=$(basename "$file")
-  version=$(echo "$filename" | grep -oE '^V[0-9]+\.[0-9]+')
+  dirname=$(dirname "$file")
 
-  echo "➡️  Processing file: $filename (version: $version)"
-  # Append file path to version group
-  VERSION_GROUPS["$version"]="${VERSION_GROUPS["$version"]} $file"
-done
+  base=$(echo "$filename" | sed -E 's/^V[0-9]+\.[0-9]+_//')  # e.g., migration_5.sql
 
-# Process each version group once (all dirs combined)
-for version in "${!VERSION_GROUPS[@]}"; do
-  echo "🔧 Checking for conflicts with version $version"
+  if [[ -z "${seen_base[$base]}" ]]; then
+    new_version="V${major}.${next_minor}"
+    next_minor=$((next_minor + 1))
 
-  # Check if any files with this version exist anywhere (to detect conflict)
-  conflict_found=false
-  for dir in "${TARGET_DIRS[@]}"; do
-    existing=$(find "$dir" -maxdepth 1 -type f -name "${version}_migration*.sql" || true)
-    if [[ -n "$existing" ]]; then
-      conflict_found=true
-      break
-    fi
-  done
+    for dir in "${TARGET_DIRS[@]}"; do
+      old_path="$dir/V1.4_$base"
+      new_path="$dir/${new_version}_$base"
 
-  if ! $conflict_found; then
-    echo "✅ No conflict detected for $version"
-    continue
+      if [[ -f "$old_path" ]]; then
+        echo "📁 git mv $old_path $new_path"
+        git mv "$old_path" "$new_path"
+      fi
+    done
+
+    seen_base[$base]=$new_version
   fi
-
-  echo "⚠️  Conflict detected for $version"
-
-  # Calculate new version (increment minor)
-  major=$(echo "$version" | cut -c2- | cut -d. -f1)
-  minor=$(echo "$version" | cut -c2- | cut -d. -f2)
-  new_minor=$((minor + 1))
-  new_version="V${major}.${new_minor}"
-
-  echo "🔄 Renaming to version $new_version"
-
-  # Rename ALL files for this version (across both dirs)
-  for filepath in ${VERSION_GROUPS[$version]}; do
-    filename=$(basename "$filepath")
-    suffix=$(echo "$filename" | sed -E "s/^${version}_//")
-    new_filename="${new_version}_${suffix}"
-    new_path="$(dirname "$filepath")/$new_filename"
-
-    echo "📁 git mv $filepath $new_path"
-    git mv "$filepath" "$new_path"
-  done
 done
 
-# Commit the renames if there are changes
+# Commit the changes
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "✅ Committing file renames"
   git config user.name "github-actions"
