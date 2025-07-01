@@ -69,11 +69,16 @@ jobs:
           done
 
       - name: Commit and Push Changes
+        env:
+          BRANCH_NAME: ${{ github.head_ref }}
         run: |
           if [[ -n "$(git status --porcelain)" ]]; then
             git add src/main/resources/database/migration_flyway/*.sql
             git commit -m "chore: auto-renamed conflicting migration file"
-            git push
+
+            echo "Pushing changes to branch: $BRANCH_NAME"
+            git push origin HEAD:refs/heads/"$BRANCH_NAME"
           else
             echo "No changes to commit."
           fi
+
