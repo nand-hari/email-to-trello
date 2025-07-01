@@ -26,7 +26,7 @@ jobs:
       - name: Run SQL version checker
         run: bash .github/workflows/scripts/check_sql_versions.sh
 
-      - name: Debug: show branch & logs
+      - name: "Debug: show branch & logs"
         run: |
           echo "BRANCHES:" && git branch -vv
           echo "LOG:" && git log -3 --oneline
