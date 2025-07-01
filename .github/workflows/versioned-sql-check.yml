@@ -2,6 +2,7 @@ name: Check and Rename SQL Migration Versions
 
 on:
   pull_request:
+    branches: [main]
     paths:
       - 'src/main/resources/database/migration_flyway/**'
       - 'src/main/resources/database/revert_flyway/**'
