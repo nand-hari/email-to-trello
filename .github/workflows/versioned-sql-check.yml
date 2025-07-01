@@ -27,7 +27,7 @@ jobs:
           if git diff --quiet; then
             echo "No changes to commit"
           else
-            git add src/main/resources/database/
+            git add src/main/resources/database/migration_flyway
             git commit -m "chore: updated SQL version filenames"
             git push origin HEAD:${{ github.head_ref }}
           fi
