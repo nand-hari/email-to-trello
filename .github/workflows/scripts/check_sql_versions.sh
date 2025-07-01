@@ -19,7 +19,7 @@ fi
 echo "📝 Changed files:"
 echo "$CHANGED_FILES"
 
-# Group by version
+# Group all files by version (across all dirs)
 declare -A VERSION_GROUPS
 
 for file in $CHANGED_FILES; do
@@ -27,54 +27,57 @@ for file in $CHANGED_FILES; do
   version=$(echo "$filename" | grep -oE '^V[0-9]+\.[0-9]+')
 
   echo "➡️  Processing file: $filename (version: $version)"
+  # Append file path to version group
   VERSION_GROUPS["$version"]="${VERSION_GROUPS["$version"]} $file"
 done
 
-# Process each version group
+# Process each version group once (all dirs combined)
 for version in "${!VERSION_GROUPS[@]}"; do
   echo "🔧 Checking for conflicts with version $version"
 
+  # Check if any files with this version exist anywhere (to detect conflict)
+  conflict_found=false
   for dir in "${TARGET_DIRS[@]}"; do
     existing=$(find "$dir" -maxdepth 1 -type f -name "${version}_migration*.sql" || true)
-
-    # Skip if no existing conflicts
-    if [[ -z "$existing" ]]; then
-      continue
+    if [[ -n "$existing" ]]; then
+      conflict_found=true
+      break
     fi
+  done
 
-    echo "⚠️  Conflict detected for $version in $dir"
-    
-    # Increment minor version
-    major=$(echo "$version" | cut -c2- | cut -d. -f1)
-    minor=$(echo "$version" | cut -c2- | cut -d. -f2)
-    new_minor=$((minor + 1))
-    new_version="V${major}.${new_minor}"
+  if ! $conflict_found; then
+    echo "✅ No conflict detected for $version"
+    continue
+  fi
 
-    echo "🔄 Renaming to version $new_version"
+  echo "⚠️  Conflict detected for $version"
 
-    # Rename all files in this version group
-    for filepath in ${VERSION_GROUPS[$version]}; do
-      filename=$(basename "$filepath")
-      suffix=$(echo "$filename" | sed -E "s/^${version}_//")
-      new_filename="${new_version}_${suffix}"
-      new_path="$(dirname "$filepath")/$new_filename"
+  # Calculate new version (increment minor)
+  major=$(echo "$version" | cut -c2- | cut -d. -f1)
+  minor=$(echo "$version" | cut -c2- | cut -d. -f2)
+  new_minor=$((minor + 1))
+  new_version="V${major}.${new_minor}"
 
-      echo "📁 git mv $filepath $new_path"
-      git mv "$filepath" "$new_path"
-    done
+  echo "🔄 Renaming to version $new_version"
+
+  # Rename ALL files for this version (across both dirs)
+  for filepath in ${VERSION_GROUPS[$version]}; do
+    filename=$(basename "$filepath")
+    suffix=$(echo "$filename" | sed -E "s/^${version}_//")
+    new_filename="${new_version}_${suffix}"
+    new_path="$(dirname "$filepath")/$new_filename"
+
+    echo "📁 git mv $filepath $new_path"
+    git mv "$filepath" "$new_path"
   done
 done
 
-# Stage renamed files explicitly
-echo "✅ Staging renamed files"
-git add -A
-
 # Commit the renames if there are changes
-if [[ -n "$(git diff --cached --name-only)" ]]; then
+if [[ -n "$(git status --porcelain)" ]]; then
   echo "✅ Committing file renames"
   git config user.name "github-actions"
   git config user.email "github-actions@github.com"
-  git commit -m "chore: auto-renamed conflicting migration file(s)"
+  git commit -am "chore: auto-renamed conflicting migration file(s)"
 else
-  echo "✅ No rename needed to commit"
+  echo "✅ No rename needed"
 fi
