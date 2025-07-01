@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-MIGRATION_DIR="src/main/resources/database/migration_flyway"
-REVERT_DIR="src/main/resources/database/revert_flyway"
+MIGRATION_DIR="src/main/resources/database/migration_flyway/**"
+REVERT_DIR="src/main/resources/database/revert_flyway/**"
 
 echo "🔍 Comparing origin/main...HEAD"
 git fetch origin main
