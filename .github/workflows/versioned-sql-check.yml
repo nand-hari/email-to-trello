@@ -1,33 +1,79 @@
-name: Check and Update SQL Version
+name: Check and Update SQL Migration Version
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    paths:
+      - 'src/main/resources/database/migration_flyway/*.sql'
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
-  check_sql_version:
+  check-version-conflicts:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # Required for full git history
 
-      - name: Set up Git
+      - name: Set up Git user
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Run SQL version check script
-        run: bash .github/workflows/scripts/check_sql_versions.sh
-
-      - name: Push changes if any
+      - name: Detect and Rename Conflicting SQL Files
         run: |
-          if git diff --quiet; then
-            echo "No changes to commit"
+          TARGET_DIR=src/main/resources/database/migration_flyway
+
+          echo "Comparing origin/main...HEAD"
+          git fetch origin main
+
+          CHANGED_FILES=$(git diff --name-only origin/main...HEAD -- "$TARGET_DIR" | grep -E "^${TARGET_DIR}/V[0-9]+\.[0-9]+_migration.*\.sql$")
+
+          if [[ -z "$CHANGED_FILES" ]]; then
+            echo "No migration files changed."
+            exit 0
+          fi
+
+          echo "Changed .sql files detected:"
+          echo "$CHANGED_FILES"
+
+          for file in $CHANGED_FILES; do
+            echo "- Processing: $file"
+            filename=$(basename "$file")
+            dir=$(dirname "$file")
+            version=$(echo "$filename" | grep -oE '^V[0-9]+\.[0-9]+')
+
+            echo "  version=$version"
+
+            existing=$(find "$dir" -maxdepth 1 -type f -name "${version}_migration*.sql" ! -samefile "$file")
+
+            if [[ -n "$existing" ]]; then
+              echo "  ➤ Version conflict detected for $version"
+
+              major=$(echo "$version" | cut -c2- | cut -d. -f1)
+              minor=$(echo "$version" | cut -c2- | cut -d. -f2)
+              new_minor=$((minor + 1))
+              new_version="V${major}.${new_minor}"
+
+              suffix=${filename#*_}
+              new_filename="${new_version}_${suffix}"
+              new_path="${dir}/${new_filename}"
+
+              echo "  ➤ Renaming to $new_filename"
+              git mv "$file" "$new_path"
+            fi
+          done
+
+      - name: Commit and Push Changes
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git add src/main/resources/database/migration_flyway/*.sql
+            git commit -m "chore: auto-renamed conflicting migration file"
+            git push
           else
-            git add src/main/resources/database/migration_flyway
-            git commit -m "chore: updated SQL version filenames"
-            git push origin HEAD:${{ github.head_ref }}
+            echo "No changes to commit."
           fi
