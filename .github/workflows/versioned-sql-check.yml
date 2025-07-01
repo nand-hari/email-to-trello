@@ -21,17 +21,8 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-      - name: Run SQL version checker script
+      - name: Run SQL version checker script (does commit if needed)
         run: bash .github/workflows/scripts/check_sql_versions.sh
-
-      - name: Commit file renames
-        run: |
-          if [[ -n "$(git status --porcelain)" ]]; then
-            git add .
-            git commit -m "chore: auto-renamed conflicting migration file(s)"
-          else
-            echo "No changes to commit"
-          fi
 
       - name: Push changes to PR branch
         env:
