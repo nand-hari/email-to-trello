@@ -21,6 +21,11 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
+      - name: Checkout PR branch locally
+        run: |
+          echo "Checking out PR branch ${{ github.head_ref }}"
+          git checkout -B "${{ github.head_ref }}"
+
       - name: Run SQL version checker script
         run: bash .github/workflows/scripts/check_sql_versions.sh
 
@@ -28,9 +33,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [[ -n "$(git status --porcelain)" ]]; then
-            echo "🔄 Changes detected, pushing to PR branch ${{ github.head_ref }}"
-            git push origin HEAD:${{ github.head_ref }}
-          else
-            echo "✅ No changes to push"
-          fi
+          # Fetch remote state to compare
+          git fetch origin ${{ github.head_ref }}
+          
+          LOCAL_HEAD=$(git rev-parse HEAD)
+          REMOTE_HEAD=$(git rev-parse origin/${{ github.head_ref
