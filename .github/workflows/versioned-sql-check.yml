@@ -21,14 +21,15 @@ jobs:
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
 
-      - name: Run SQL version checker script (does commit if needed)
+      - name: Run SQL version checker script
         run: bash .github/workflows/scripts/check_sql_versions.sh
 
       - name: Push changes to PR branch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [[ -n "$(git status --porcelain)" ]]; then
+          # Check for any commits and push if present
+          if [[ -n "$(git log origin/${{ github.head_ref }}..HEAD)" ]]; then
             echo "Pushing changes to PR branch ${{ github.head_ref }}"
             git push origin HEAD:${{ github.head_ref }}
           else
