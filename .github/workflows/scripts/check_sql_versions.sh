@@ -3,57 +3,51 @@ set -e
 
 MIGRATION_DIR="src/main/resources/database/migration_flyway"
 REVERT_DIR="src/main/resources/database/revert_flyway"
-TARGET_DIRS=("$MIGRATION_DIR" "$REVERT_DIR")
 
 echo "🔍 Comparing origin/main...HEAD"
 git fetch origin main
 
-# Find changed SQL files
-CHANGED_FILES=$(git diff --name-only origin/main...HEAD -- "${TARGET_DIRS[@]}" | grep -E 'V[0-9]+\.[0-9]+_migration.*\.sql$' || true)
+# Find changed SQL migration files under both dirs
+CHANGED_FILES=$(git diff --name-only origin/main...HEAD -- "${MIGRATION_DIR}" "${REVERT_DIR}" \
+               | grep -E 'V[0-9]+\.[0-9]+_migration_[0-9]+\.sql$' || true)
 
 if [[ -z "$CHANGED_FILES" ]]; then
-  echo "✅ No SQL migration files changed."
+  echo "✅ No relevant SQL migration files changed."
   exit 0
 fi
 
 echo "📝 Changed files:"
 echo "$CHANGED_FILES"
 
-# Track current max version in the repo
-ALL_EXISTING=$(find "${TARGET_DIRS[@]}" -type f -name 'V*_migration*.sql' | grep -oE 'V[0-9]+\.[0-9]+' | sort -u)
-LAST_VERSION=$(echo "$ALL_EXISTING" | sort -V | tail -n1)
-major=$(echo "$LAST_VERSION" | cut -c2- | cut -d. -f1)
-minor=$(echo "$LAST_VERSION" | cut -c2- | cut -d. -f2)
-next_minor=$((minor + 1))
+for filepath in $CHANGED_FILES; do
+  filename=$(basename "$filepath")
+  version=$(echo "$filename" | grep -oE '^V[0-9]+\.[0-9]+')
+  suffix=$(echo "$filename" | sed -E "s/^${version}_//")  # e.g. migration_7.sql
 
-# Process and rename each unique file pair
-declare -A seen_base
+  # Check if version already exists on main branch
+  existing=$(git ls-tree -r origin/main --name-only | grep -E ".*/${version}_${suffix}$" || true)
 
-for file in $CHANGED_FILES; do
-  filename=$(basename "$file")
-  dirname=$(dirname "$file")
+  if [[ -n "$existing" ]]; then
+    echo "⚠️ Conflict: version $version already exists for $suffix"
+    major=$(echo "$version" | cut -c2- | cut -d. -f1)
+    minor=$(echo "$version" | cut -c2- | cut -d. -f2)
+    new_version="V${major}.$((minor + 1))"
+    echo "🔄 Will rename version for $filename → ${new_version}_$suffix"
 
-  base=$(echo "$filename" | sed -E 's/^V[0-9]+\.[0-9]+_//')  # e.g., migration_5.sql
-
-  if [[ -z "${seen_base[$base]}" ]]; then
-    new_version="V${major}.${next_minor}"
-    next_minor=$((next_minor + 1))
-
-    for dir in "${TARGET_DIRS[@]}"; do
-      old_path="$dir/V1.4_$base"
-      new_path="$dir/${new_version}_$base"
-
-      if [[ -f "$old_path" ]]; then
-        echo "📁 git mv $old_path $new_path"
-        git mv "$old_path" "$new_path"
+    for dir in "$MIGRATION_DIR" "$REVERT_DIR"; do
+      orig="$dir/${version}_$suffix"
+      if [[ -f "$orig" ]]; then
+        dst="$dir/${new_version}_$suffix"
+        echo "📁 git mv $orig $dst"
+        git mv "$orig" "$dst"
       fi
     done
-
-    seen_base[$base]=$new_version
+  else
+    echo "✅ No conflict for $filename → version $version is unique"
   fi
 done
 
-# Commit the changes
+# Commit renames if there are any
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "✅ Committing file renames"
   git config user.name "github-actions"
