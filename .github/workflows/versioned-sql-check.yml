@@ -1,10 +1,10 @@
-name: Check SQL Migration Versions
+name: Check and Rename SQL Migration Versions
 
 on:
   pull_request:
     paths:
-      - "src/main/resources/database/migration_flyway/*.sql"
-      - "src/main/resources/database/revert_flyway/*.sql"
+      - 'src/main/resources/database/migration_flyway/**'
+      - 'src/main/resources/database/revert_flyway/**'
 
 jobs:
   check-sql-versions:
@@ -16,7 +16,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Git identity
+      - name: Set up Git user
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
@@ -25,18 +25,21 @@ jobs:
         run: bash .github/workflows/scripts/check_sql_versions.sh
 
       - name: Commit file renames
-        if: success()
         run: |
           if [[ -n "$(git status --porcelain)" ]]; then
-            git commit -am "chore: auto-renamed conflicting migration file(s)"
+            git add .
+            git commit -m "chore: auto-renamed conflicting migration file(s)"
+          else
+            echo "No changes to commit"
           fi
 
-      - name: Push auto-renamed files (if any)
-        if: success()
+      - name: Push changes to PR branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [[ -n "$(git status --porcelain)" ]]; then
-            echo "🚀 Pushing changes to PR branch: ${{ github.head_ref }}"
+            echo "Pushing changes to PR branch ${{ github.head_ref }}"
             git push origin HEAD:${{ github.head_ref }}
           else
-            echo "✅ No changes to push"
+            echo "No changes to push"
           fi
