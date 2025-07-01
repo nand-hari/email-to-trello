@@ -70,11 +70,11 @@ for version in "${!VERSION_GROUPS[@]}"; do
 done
 
 # Commit the renames if there are changes
-if [[ -n "$(git status --porcelain)" ]]; then
-  echo "✅ Committing file renames"
-  git config user.name "github-actions"
-  git config user.email "github-actions@github.com"
-  git commit -am "chore: auto-renamed conflicting migration file(s)"
-else
-  echo "✅ No rename needed"
-fi
+# if [[ -n "$(git status --porcelain)" ]]; then
+#   echo "✅ Committing file renames"
+#   git config user.name "github-actions"
+#   git config user.email "github-actions@github.com"
+#   git commit -am "chore: auto-renamed conflicting migration file(s)"
+# else
+#   echo "✅ No rename needed"
+# fi
