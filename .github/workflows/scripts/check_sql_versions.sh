@@ -34,34 +34,38 @@ done
 for version in "${!VERSION_GROUPS[@]}"; do
   echo "🔧 Checking for conflicts with version $version"
 
+  # Check conflicts across both directories combined
+  conflict_found=false
   for dir in "${TARGET_DIRS[@]}"; do
-    existing=$(find "$dir" -maxdepth 1 -type f -name "${version}_migration*.sql" || true)
-
-    # Skip if no existing conflicts
-    if [[ -z "$existing" ]]; then
-      continue
+    existing_files=$(find "$dir" -maxdepth 1 -type f -name "${version}_migration*.sql" || true)
+    if [[ -n "$existing_files" ]]; then
+      conflict_found=true
+      echo "⚠️  Conflict detected for $version in $dir"
     fi
+  done
 
-    echo "⚠️  Conflict detected for $version in $dir"
-    
-    # Increment minor version
-    major=$(echo "$version" | cut -c2- | cut -d. -f1)
-    minor=$(echo "$version" | cut -c2- | cut -d. -f2)
-    new_minor=$((minor + 1))
-    new_version="V${major}.${new_minor}"
+  if ! $conflict_found; then
+    echo "✅ No conflict detected for $version, no renaming needed"
+    continue
+  fi
 
-    echo "🔄 Renaming to version $new_version"
+  # Increment minor version
+  major=$(echo "$version" | cut -c2- | cut -d. -f1)
+  minor=$(echo "$version" | cut -c2- | cut -d. -f2)
+  new_minor=$((minor + 1))
+  new_version="V${major}.${new_minor}"
 
-    # Rename all files in this version group
-    for filepath in ${VERSION_GROUPS[$version]}; do
-      filename=$(basename "$filepath")
-      suffix=$(echo "$filename" | sed -E "s/^${version}_//")
-      new_filename="${new_version}_${suffix}"
-      new_path="$(dirname "$filepath")/$new_filename"
+  echo "🔄 Renaming to version $new_version"
 
-      echo "📁 git mv $filepath $new_path"
-      git mv "$filepath" "$new_path"
-    done
+  # Rename all files in this version group
+  for filepath in ${VERSION_GROUPS[$version]}; do
+    filename=$(basename "$filepath")
+    suffix=$(echo "$filename" | sed -E "s/^${version}_//")
+    new_filename="${new_version}_${suffix}"
+    new_path="$(dirname "$filepath")/$new_filename"
+
+    echo "📁 git mv $filepath $new_path"
+    git mv "$filepath" "$new_path"
   done
 done
 
