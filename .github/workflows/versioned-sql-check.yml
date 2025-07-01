@@ -1,37 +1,42 @@
-name: Check and Rename SQL Versions
+name: Check SQL Migration Versions
 
 on:
   pull_request:
     paths:
-      - 'src/main/resources/database/migration_flyway/**/*.sql'
-      - 'src/main/resources/database/revert_flyway/**/*.sql'
+      - "src/main/resources/database/migration_flyway/*.sql"
+      - "src/main/resources/database/revert_flyway/*.sql"
 
 jobs:
-  check-migration-version:
+  check-sql-versions:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 🧾 Checkout code
+      - name: Checkout code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Required to compare with main
+          fetch-depth: 0
 
-      - name: 🔧 Set up Git config
+      - name: Set up Git identity
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
 
-      - name: 🧠 Check for migration version conflicts and rename
+      - name: Run SQL version checker script
         run: bash .github/workflows/scripts/check_sql_versions.sh
 
-      - name: 🚀 Commit and push renamed files if any
-        env:
-          BRANCH_NAME: ${{ github.head_ref }}
+      - name: Commit file renames
+        if: success()
         run: |
           if [[ -n "$(git status --porcelain)" ]]; then
-            git add src/main/resources/database/migration_flyway/*.sql
-            git add src/main/resources/database/revert_flyway/*.sql
-            git commit -m "chore: auto-renamed conflicting SQL migration files"
-            git push origin HEAD:$BRANCH_NAME
+            git commit -am "chore: auto-renamed conflicting migration file(s)"
+          fi
+
+      - name: Push auto-renamed files (if any)
+        if: success()
+        run: |
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "🚀 Pushing changes to PR branch: ${{ github.head_ref }}"
+            git push origin HEAD:${{ github.head_ref }}
           else
-            echo "✅ No changes to commit."
+            echo "✅ No changes to push"
+          fi
