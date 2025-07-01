@@ -1,37 +1,33 @@
-name: Check and Rename SQL Migration Versions
+#!/bin/bash
+set -e
 
-on:
-  pull_request:
-    paths:
-      - 'src/main/resources/database/migration_flyway/**'
-      - 'src/main/resources/database/revert_flyway/**'
+MIGRATION_DIR="src/main/resources/database/migration_flyway"
+REVERT_DIR="src/main/resources/database/revert_flyway"
+TARGET_DIRS=("$MIGRATION_DIR" "$REVERT_DIR")
 
-jobs:
-  check-sql-versions:
-    runs-on: ubuntu-latest
+echo "🔍 Comparing origin/main...HEAD"
+git fetch origin main
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+# Find changed SQL files in both directories
+CHANGED_FILES=$(git diff --name-only origin/main...HEAD -- "${TARGET_DIRS[@]}" | grep -E 'V[0-9]+\.[0-9]+_migration.*\.sql$' || true)
 
-      - name: Set up Git user
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
+if [[ -z "$CHANGED_FILES" ]]; then
+  echo "✅ No SQL migration files changed."
+  exit 0
+fi
 
-      - name: Run SQL version checker script
-        run: bash .github/workflows/scripts/check_sql_versions.sh
+echo "📝 Changed files:"
+echo "$CHANGED_FILES"
 
-      - name: Push changes to PR branch
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Check for any commits and push if present
-          if [[ -n "$(git log origin/${{ github.head_ref }}..HEAD)" ]]; then
-            echo "Pushing changes to PR branch ${{ github.head_ref }}"
-            git push origin HEAD:${{ github.head_ref }}
-          else
-            echo "No changes to push"
-          fi
+# Group all files by version (across all dirs)
+declare -A VERSION_GROUPS
+
+for file in $CHANGED_FILES; do
+  filename=$(basename "$file")
+  version=$(echo "$filename" | grep -oE '^V[0-9]+\.[0-9]+')
+
+  echo "➡️  Processing file: $filename (version: $version)"
+  VERSION_GROUPS["$version"]="${VERSION_GROUPS["$version"]} $file"
+done
+
+# Process eac
